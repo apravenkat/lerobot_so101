@@ -232,9 +232,10 @@ class FeetechMotorsBus(MotorsBus):
     @property
     def is_calibrated(self) -> bool:
         motors_calibration = self.read_calibration()
-        if set(motors_calibration) != set(self.calibration):
-            return False
-
+        '''if set(motors_calibration) != set(self.calibration):
+            return False'''
+	    
+        self.calibration = motors_calibration
         same_ranges = all(
             self.calibration[motor].range_min == cal.range_min
             and self.calibration[motor].range_max == cal.range_max

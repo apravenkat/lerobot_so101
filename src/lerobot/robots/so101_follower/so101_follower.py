@@ -146,6 +146,10 @@ class SO101Follower(Robot):
         self._save_calibration()
         print("Calibration saved to", self.calibration_fpath)
 
+    def freeMoveRobot(self) -> None:
+        """Disable torque on all motors to allow free movement of the arm."""
+        self.bus.disable_torque()
+        logger.info(f"{self} motors torque disabled for free movement.")
     def configure(self) -> None:
         with self.bus.torque_disabled():
             self.bus.configure_motors()
