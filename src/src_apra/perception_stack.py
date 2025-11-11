@@ -5,6 +5,7 @@ import glob
 import os
 import mujoco
 import mujoco.viewer
+import time
 from motion_planner import MotionPlanner
 
 class PerceptionStack:
@@ -12,10 +13,15 @@ class PerceptionStack:
     
         self.cap = cv2.VideoCapture("/dev/video0")
 
-    def get_frame(self):
+    def get_frame(self, flush=2):
+        
+        time.sleep(0.05)
         if not self.cap.isOpened():
             print("Cannot open camera")
             return None
+        
+        for _ in range(flush):
+            self.cap.read()
         ret, frame = self.cap.read()
         if not ret:
             print("Can't receive frame (stream end?). Exiting ...")

@@ -19,7 +19,8 @@ class ObjectLocalization:
         self.dist_coeffs = self.camera_calib['dist_coeffs'] 
         self.T_cam2gripper = self.hand_eye_calib['T_cam2gripper']
         self.length = 0.04  # Marker length in meters
-        self.planner.arm.freeMoveRobot()
+        
+    
     def localize_object(self, frame):
     
         aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_ARUCO_ORIGINAL)
@@ -60,19 +61,29 @@ class ObjectLocalization:
     def getObjectPosition(self):
         while True:
             frame = self.perception.get_frame()
-            cv2.imshow('Camera Frame', frame)
-            self.sync_robot_and_simulation()
+            
+            
             if frame is None:
                 print("No frame captured.")
-            if cv2.waitKey(1) & 0xFF == 27:  # ESC to exit
-                break
+                time.sleep(0.01)
+                continue
+            self.sync_robot_and_simulation()
+            cv2.imshow('Camera Frame', frame)
+            cv2.waitKey(1)
             T_base2obj = self.localize_object(frame)
             if T_base2obj is not None:
-                pos = T_base2obj[:3, 3]
-                print(f"Object Position in Base Frame: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
+                del frame
+                cv2.destroyWindow('Camera Frame')
+                break
             else:
                 print("Object not localized.")
-    
+                time.sleep(0.01)
+        time.sleep(0.05)
+        pos = T_base2obj[:3, 3].copy()
+        rot = T_base2obj[:3, :3].copy()
+        del T_base2obj
+        print(f"Object Position in Base Frame: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
+        return pos, rot
     def sync_robot_and_simulation(self):
         current_robot_joint_positions = self.planner.getRobotPose()
         self.planner.data.qpos[:len(self.planner.joint_names)] = np.radians(current_robot_joint_positions)
@@ -137,12 +148,66 @@ class ObjectLocalization:
                 mujoco.mj_step(self.planner.model, self.planner.data)
                 viewer.sync()
                 time.sleep(0.01)
-
+    def goto_home_position(self, home_pos):
+        home_pos = np.radians(home_pos)
+        traj = self.planner.plan_motion_to_joint_positions(home_pos)
+        if traj is not None:
+            self.planner.visualize_trajectory(traj, timestep=0.05)
+            print("do you want to move the robot to home position? (y/n)")
+            choice = input().strip().lower()
+            if choice != 'y':
+                print("Motion execution cancelled.")
+                return
+            else:
+                for qpos in traj:
+                    smoothed_qpos = self.planner.smooth_joint_positions(np.degrees(qpos[:len(self.planner.joint_names)]))
+                    self.planner.sendSimPoseToRobot(smoothed_qpos)
+            print("Robot moved to home position.")
+        else:
+            print("Failed to plan motion to home position.")
+    def go_to_object(self):
+        pos, rot = self.getObjectPosition()
+        rot = None
+        traj = self.planner.plan_motion(pos, rot)
+        if traj is None:
+            print("Failed to find a motion plan.")
+        else:
+            print("Motion plan completed.")
+            self.planner.visualize_trajectory(traj, timestep=0.05)
+            print("Visualization completed.")
+            print("Do you want to execute this motion on the real robot? (y/n)")
+            choice = input().strip().lower()
+            if choice != 'y':
+                print("Motion execution cancelled.")
+                return
+            for qpos in traj:
+                smoothed_qpos = self.planner.smooth_joint_positions(np.degrees(qpos[:len(self.planner.joint_names)]))
+                self.planner.sendSimPoseToRobot(smoothed_qpos)
+            print("Motion execution completed.")
+            del pos, rot, traj
 if __name__ == "__main__":
     locator = ObjectLocalization()
     current_robot_joint_positions = locator.planner.getRobotPose()
     locator.planner.data.qpos[:len(locator.planner.joint_names)] = np.radians(current_robot_joint_positions)
+    print("Current Robot Joint Positions (radians):", np.radians(current_robot_joint_positions))
     site_id = mujoco.mj_name2id(locator.planner.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
     mujoco.mj_forward(locator.planner.model, locator.planner.data)
-    locator.visualize_localization()
-    #locator.getObjectPosition()
+    #locator.visualize_localization()
+    home_pos = np.array([-1.758, -79.604, 40.483, 45.582, -91.120, 0.395])
+    while(True):
+        print("Do you want to move the robot to home position? (y/n)")
+        choice = input().strip().lower()
+        if choice == 'y':
+            time.sleep(1)
+            locator.goto_home_position(home_pos)
+        
+        print("Do you want to localize the object? (y/n)")
+        choice = input().strip().lower()
+        if choice == 'y':
+            time.sleep(1)
+            locator.go_to_object()
+        print("Do you want to exit? (y/n)")
+        choice = input().strip().lower()
+        if choice == 'y':
+            locator.planner.arm.freeMoveRobot()
+            break
