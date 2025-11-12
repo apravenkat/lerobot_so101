@@ -7,26 +7,32 @@ import mujoco
 import mujoco.viewer
 import time
 from motion_planner import MotionPlanner
+import threading
 
 class PerceptionStack:
     def __init__(self):
     
         self.cap = cv2.VideoCapture("/dev/video0")
+        self.latest_frame = None
+        self.frame_lock = threading.Lock()
+        self.running = True
+        self.thread = threading.Thread(target=self._update_frame, daemon=True)
+        self.thread.start()
+    
+    def _update_frame(self):
+        while self.running:
+            ret, frame = self.cap.read()
+            if ret:
+                with self.frame_lock:
+                    self.latest_frame = frame
+            time.sleep(0.0005)  # Slight delay to prevent high CPU usage
 
     def get_frame(self, flush=2):
-        
-        time.sleep(0.05)
-        if not self.cap.isOpened():
-            print("Cannot open camera")
-            return None
-        
-        for _ in range(flush):
-            self.cap.read()
-        ret, frame = self.cap.read()
-        if not ret:
-            print("Can't receive frame (stream end?). Exiting ...")
-            return None
-        return frame
+        with self.frame_lock:
+            if self.latest_frame is None:
+                return None
+            return self.latest_frame.copy()
+            
     def interinsinc_calibration(self):
         ChessBoardSize = (8, 5)
         SquareSize = 25

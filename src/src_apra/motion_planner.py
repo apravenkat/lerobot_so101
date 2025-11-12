@@ -238,6 +238,7 @@ class MotionPlanner:
         except Exception as e:
             print(f"Failed to send joint angles to robot: {e}")
         time.sleep(0.01)
+        
     def getEndEffectorPosition(self):
         mujoco.mj_forward(self.model, self.data)
         site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
