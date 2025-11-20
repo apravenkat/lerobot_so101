@@ -199,7 +199,7 @@ class MotionPlanner:
         traj = np.array([[s[i] for i in range(dim)] for s in path.getStates()])
         return traj
     
-    def visualize_trajectory(self, traj, timestep=0.05):
+    def visualize_trajectory(self, traj, timestep=0.001):
         with mujoco.viewer.launch_passive(self.model, self.data) as viewer:
             for qpos in traj:
                 smoothed_qpos = self.smooth_joint_positions((qpos[:len(self.joint_names)]))
@@ -237,7 +237,7 @@ class MotionPlanner:
             sent_action = self.arm.send_action(action)
         except Exception as e:
             print(f"Failed to send joint angles to robot: {e}")
-        time.sleep(0.01)
+        time.sleep(0.005)
         
     def getEndEffectorPosition(self):
         mujoco.mj_forward(self.model, self.data)

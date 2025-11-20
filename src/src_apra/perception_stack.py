@@ -25,6 +25,8 @@ class PerceptionStack:
             if ret:
                 with self.frame_lock:
                     self.latest_frame = frame
+            cv2.imshow('Camera Frame', frame)
+            cv2.waitKey(1)
             time.sleep(0.0005)  # Slight delay to prevent high CPU usage
 
     def get_frame(self, flush=2):

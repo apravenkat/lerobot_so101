@@ -47,17 +47,21 @@ class ObjectLocalization:
         if not success:
             print("Pose estimation failed.")
             return None
-
+        offset = np.array([0, 0.05, 0.05, 1])
         R_cam2obj, _ = cv2.Rodrigues(rvec)
         T_cam2obj = np.eye(4)
         T_cam2obj[:3, :3] = R_cam2obj
         T_cam2obj[:3, 3] = tvec.ravel()
         
+        
         #T_gripper2obj = np.linalg.inv(self.T_cam2gripper) @ np.linalg.inv(T_cam2obj)
         T_base2gripper =(self.planner.get_base2gripper_transform())
         T_base2obj = T_base2gripper @ (self.T_cam2gripper) @ (T_cam2obj)
+        r_offset = T_base2obj @ offset
+        T_base2obj[:3, 3] = r_offset[:3]
         return T_base2obj
     
+
     def getObjectPosition(self):
         while True:
             frame = self.perception.get_frame()
@@ -65,25 +69,21 @@ class ObjectLocalization:
             
             if frame is None:
                 print("No frame captured.")
-                time.sleep(0.01)
+                time.sleep(0.001)
                 continue
             self.sync_robot_and_simulation()
-            cv2.imshow('Camera Frame', frame)
-            cv2.waitKey(1)
             T_base2obj = self.localize_object(frame)
             if T_base2obj is not None:
-                del frame
-                cv2.destroyWindow('Camera Frame')
-                break
+                pos = T_base2obj[:3, 3].copy()
+                rot = T_base2obj[:3, :3].copy()
+                print(f"Object Position in Base Frame: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
+                return pos, rot
+            
             else:
                 print("Object not localized.")
-                time.sleep(0.01)
-        time.sleep(0.05)
-        pos = T_base2obj[:3, 3].copy()
-        rot = T_base2obj[:3, :3].copy()
-        del T_base2obj
-        print(f"Object Position in Base Frame: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
-        return pos, rot
+        
+
+    
     def sync_robot_and_simulation(self):
         current_robot_joint_positions = self.planner.getRobotPose()
         self.planner.data.qpos[:len(self.planner.joint_names)] = np.radians(current_robot_joint_positions)
