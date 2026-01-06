@@ -20,7 +20,10 @@ from lerobot.configs.policies import PreTrainedConfig
 from lerobot.configs.types import FeatureType, NormalizationMode, PolicyFeature
 from lerobot.optim.optimizers import AdamWConfig
 from lerobot.optim.schedulers import CosineDecayWithWarmupSchedulerConfig
+from lerobot.policies.rtc.configuration_rtc import RTCConfig
 from lerobot.utils.constants import OBS_IMAGES
+
+DEFAULT_IMAGE_SIZE = 224
 
 
 @PreTrainedConfig.register_subclass("pi0")
@@ -47,7 +50,13 @@ class PI0Config(PreTrainedConfig):
     min_period: float = 4e-3
     max_period: float = 4.0
 
-    image_resolution: tuple[int, int] = (224, 224)  # see openpi `preprocessing_pytorch.py`
+    # Real-Time Chunking (RTC) configuration
+    rtc_config: RTCConfig | None = None
+
+    image_resolution: tuple[int, int] = (
+        DEFAULT_IMAGE_SIZE,
+        DEFAULT_IMAGE_SIZE,
+    )  # see openpi `preprocessing_pytorch.py`
 
     # Add empty images. Used to add empty cameras when no image features are present.
     empty_cameras: int = 0
@@ -66,6 +75,10 @@ class PI0Config(PreTrainedConfig):
     compile_model: bool = False  # Whether to use torch.compile for model optimization
     compile_mode: str = "max-autotune"  # Torch compile mode
     device: str | None = None  # Device to use for the model (None = auto-detect)
+
+    # Finetuning settings
+    freeze_vision_encoder: bool = False  # Freeze only the vision encoder
+    train_expert_only: bool = False  # Freeze entire VLM, train only action expert and projections
 
     # Optimizer settings: see openpi `AdamW``
     optimizer_lr: float = 2.5e-5  # see openpi `CosineDecaySchedule: peak_lr`
