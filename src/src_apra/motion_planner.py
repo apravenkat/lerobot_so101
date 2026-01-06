@@ -9,7 +9,7 @@ from ompl import geometric as og
 import numpy as np
 np.float = float
 from urdfpy import URDF
-
+from scipy.spatial.transform import Rotation as R
 
 class MotionPlanner:
     def __init__(self, xml_file="so101_new_calib.xml", urdf_file="so101_new_calib.urdf"):
@@ -62,7 +62,7 @@ class MotionPlanner:
                 mujoco.mj_step(self.model, self.data)
                 viewer.sync()
 
-    def  inverse_kinematics(self, target_pos, target_rot=None, sit_name="gripperframe", max_iter=200, tol=1e-3, step_size=0.05):
+    def  inverse_kinematics(self, target_pos, target_rot, sit_name="gripperframe", max_iter=800, tol=0.05, step_size=0.1):
         #site_id = self.model.site(sit_name).id
         ik_converged = False
         site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, sit_name)
@@ -73,24 +73,23 @@ class MotionPlanner:
             pos_error = target_pos - current_pos
             if target_rot is not None:
                 R_err = target_rot @ current_rot.T
-                rot_err = 0.5 * (np.array([R_err[2, 1] - R_err[1, 2],
-                                           R_err[0, 2] - R_err[2, 0],
-                                           R_err[1, 0] - R_err[0, 1]]))
-                error6 = np.concatenate((pos_error, rot_err))
+                rot_err = R.from_matrix(R_err).as_rotvec()
+                error6 = np.concatenate((pos_error, 0.1*rot_err))
             else:
                 error6 = pos_error
+            print(f"IK iteration error: {np.linalg.norm(error6)}")
             if np.linalg.norm(error6) < tol:
                 print("IK converged")
                 ik_converged = True
                 break
             J_pos = np.ascontiguousarray(np.zeros((3, self.model.nv)), dtype=np.float64)
             J_rot = np.ascontiguousarray(np.zeros((3, self.model.nv)), dtype=np.float64)
-            mujoco.mj_jacSite(self.model, self.data, J_pos, None, site_id)
+            mujoco.mj_jacSite(self.model, self.data, J_pos, J_rot, site_id)
             if target_rot is not None:
                 J = np.vstack((J_pos, J_rot))
             else:
                 J = J_pos
-            lambda_ = 0.001
+            lambda_ = 0.1
             JJt = J @ J.T + lambda_ * np.eye(J.shape[0])
             dq = step_size * J.T @ np.linalg.solve(JJt, error6)
             self.data.qpos[:self.model.nq] += dq
@@ -237,14 +236,14 @@ class MotionPlanner:
             sent_action = self.arm.send_action(action)
         except Exception as e:
             print(f"Failed to send joint angles to robot: {e}")
-        time.sleep(0.005)
         
     def getEndEffectorPosition(self):
         mujoco.mj_forward(self.model, self.data)
         site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
         pos = self.data.site_xpos[site_id]
+        rot = self.data.site_xmat[site_id].reshape(3, 3)
         print(f"End-Effector Position: {pos}")
-        return pos.copy()
+        return pos.copy(), rot.copy()
 
 if __name__ == "__main__":
     planner = MotionPlanner()
@@ -253,8 +252,10 @@ if __name__ == "__main__":
     current_robot_joint_positions = planner.getRobotPose()
     print("Current Robot Joint Positions (radians):", np.radians(current_robot_joint_positions))
     planner.data.qpos[:len(planner.joint_names)] = np.radians(current_robot_joint_positions)
-    pos = planner.getEndEffectorPosition()
+    pos, rot = planner.getEndEffectorPosition()
     print(f"Current End-Effector Position: {pos}")
+    print(rot)
+
     '''
     if sim:
         current_position = planner.get_current_pos_end()

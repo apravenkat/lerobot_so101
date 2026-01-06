@@ -12,7 +12,7 @@ import threading
 class PerceptionStack:
     def __init__(self):
     
-        self.cap = cv2.VideoCapture("/dev/video0")
+        self.cap = cv2.VideoCapture("/dev/video2")
         self.latest_frame = None
         self.frame_lock = threading.Lock()
         self.running = True
@@ -121,10 +121,17 @@ if __name__ == "__main__":
     perception = PerceptionStack()
     #perception.get_pictures_for_calibration(num_images=15)
     #perception.interinsinc_calibration()
-    data  = np.load('camera_calibration_data.npz')
+    '''data  = np.load('camera_calibration_data.npz')
     camera_matrix = data['camera_matrix']
     dist_coeffs = data['dist_coeffs']
     r_vecs = data['rvecs']
     t_vecs = data['tvecs']
-    print(dist_coeffs)
+    print(dist_coeffs)'''
     #perception.get_image_coordinates_from_camera(camera_matrix, dist_coeffs, r_vecs, t_vecs)
+    frame = perception.get_frame()
+    
+    if frame != None:
+        print("Hello")
+        cv2.imshow("Captured", frame)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()

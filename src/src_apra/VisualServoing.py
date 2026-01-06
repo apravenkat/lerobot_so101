@@ -25,37 +25,56 @@ class VisualSeroving:
     def track_object(self):
         current_joints = self.ol.planner.getRobotPose()
         prev_error = 0
-        self.ol.planner.data.qpos[:len(self.ol.planner.joint_names)] = np.radians(current_robot_joint_positions)
+        self.ol.sync_robot_and_simulation()
         mujoco.mj_forward(self.ol.planner.model, self.ol.planner.data)
         current_end_effector_pos = self.ol.planner.getEndEffectorPosition()
         site_id = mujoco.mj_name2id(self.ol.planner.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
         nq = len(self.ol.planner.joint_names)
         nv = self.ol.planner.model.nv
+        total_error = 0
+        integral_gain = 0.0001
+        p_gain = 2.5
+        gain = 0.1
+        damping = 0.15
+        lambda_ = 0.1
+        d_gain = 0.001
+        control_type = 1
+        prev_error = 0
         while True:
             frame = self.ol.perception.get_frame()
             if frame is not None:
                 pos = self.servo_to_object() #end-effector position to be servoed to in world coordinates wrt robot base
                 if pos is not None:
-                        current_end_effector_pos = self.ol.planner.getEndEffectorPosition()
+                        current_end_effector_pos, current_end_effector_rot = self.ol.planner.getEndEffectorPosition()
                         error = pos - current_end_effector_pos
                         J_pos = np.zeros((3, nv))
                         J_rot = np.zeros((3, nv))
                         mujoco.mj_jacSite(self.ol.planner.model, self.ol.planner.data, J_pos, J_rot, site_id)
                         J_pos = J_pos[:, :nq]
                         q_dot = self.ol.planner.data.qvel[:nq]
-                        ee_vel = J_pos @ q_dot
-                        vel_err = -ee_vel
-                        lambda_gain = 3
-                        d_theta = lambda_gain * (J_pos.T @ error) 
-                        max_step = np.radians(3.0)   # example: limit to 2° per cycle
-                        d_theta = np.clip(d_theta, -max_step, max_step)
+                        if control_type==1:
+                            q_dot = self.ol.planner.data.qvel[:nq]
+                            ee_vel = J_pos @ q_dot
+                            vel_err = -ee_vel
+                            angle_error = J_pos.T @ error
+                            total_error += angle_error
+                            total_error = np.clip(total_error,-1,1)
+                            d_theta = p_gain * (angle_error) + integral_gain * total_error + d_gain * (angle_error-prev_error)
+                        else:
+                            JT = J_pos.T
+                            d_theta = -0.01*(gain * JT @ np.linalg.inv(J_pos @ JT + lambda_**2 * np.eye(3)) @ error - damping * q_dot)
+                            max_step = np.radians(0.5)   # example: limit to 2° per cycle
+                            d_theta = np.clip(d_theta, -max_step, max_step)
+                        
                         current_joints = self.ol.planner.getRobotPose()
                         new_joints = current_joints + np.degrees(d_theta)
+                        self.ol.planner.smooth_joint_positions(new_joints)
                         self.ol.planner.sendSimPoseToRobot(new_joints)
+                        #prev_error = angle_error
                         self.ol.sync_robot_and_simulation() #sync mujoco robot positions with real robot
                         mujoco.mj_forward(self.ol.planner.model, self.ol.planner.data)
    
-            time.sleep(0.001)  # Adjust the sleep time as needed to control the tracking frequency
+            time.sleep(0.01)  # Adjust the sleep time as needed to control the tracking frequency
         
 if __name__ == "__main__":
     visual_servoing = VisualSeroving()
