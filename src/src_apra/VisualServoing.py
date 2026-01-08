@@ -98,4 +98,4 @@ if __name__ == "__main__":
         visual_servoing.track_object()
     else:
         print("Visual servoing cancelled.")
-        visual_servoing.ol.planner.arm.freeMoveRobot()
+        visual_servoing.ol.planner.arm.freeMoveRobot() 
