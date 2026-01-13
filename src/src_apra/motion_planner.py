@@ -77,7 +77,7 @@ class MotionPlanner:
                 error6 = np.concatenate((pos_error, 0.1*rot_err))
             else:
                 error6 = pos_error
-            print(f"IK iteration error: {np.linalg.norm(error6)}")
+            #print(f"IK iteration error: {np.linalg.norm(error6)}")
             if np.linalg.norm(error6) < tol:
                 print("IK converged")
                 ik_converged = True
@@ -242,7 +242,7 @@ class MotionPlanner:
         site_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
         pos = self.data.site_xpos[site_id]
         rot = self.data.site_xmat[site_id].reshape(3, 3)
-        print(f"End-Effector Position: {pos}")
+        #print(f"End-Effector Position: {pos}")
         return pos.copy(), rot.copy()
 
 if __name__ == "__main__":

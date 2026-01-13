@@ -13,7 +13,7 @@ class ObjectLocalization:
   
    def __init__(self, hand_eye_calib_file='handeye_calibration_chessboard.npz', camera_calib_file='camera_calibration_data.npz'):
        base_dir = os.path.dirname(os.path.abspath(__file__))
-       self.perception = PerceptionStack()
+       self.perception = PerceptionStack(device="/dev/video2", fps = 30)
        self.planner = MotionPlanner()
        self.hand_eye_calib = np.load(os.path.join(base_dir, "calibrations",hand_eye_calib_file))
        self.camera_calib = np.load(os.path.join(base_dir, "calibrations", camera_calib_file))
@@ -52,7 +52,7 @@ class ObjectLocalization:
        if not success:
            print("Pose estimation failed.")
            return None
-       offset = np.array([0, 0.05, 0.05,1 ])
+       offset = np.array([0, 0.05, 0.05, 1])
        R_cam2obj, _ = cv2.Rodrigues(rvec)
        T_cam2obj = np.eye(4)
        T_cam2obj[:3, :3] = R_cam2obj
@@ -71,18 +71,18 @@ class ObjectLocalization:
    def getObjectPosition(self):
        while True:
            frame = self.perception.get_frame()
-          
-          
+           cv2.imshow('Camera Frame', frame)
+           cv2.waitKey(1)
            if frame is None:
                print("No frame captured.")
-               time.sleep(0.001)
                continue
+           
            self.sync_robot_and_simulation()
            T_base2obj = self.localize_object(frame)
            if T_base2obj is not None:
                pos = T_base2obj[:3, 3].copy()
                rot = T_base2obj[:3, :3].copy()
-               print(f"Object Position in Base Frame: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
+               #print(f"Object Position in Base Frame: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
                return pos, rot
           
            else:
@@ -130,7 +130,7 @@ class ObjectLocalization:
           
            while True:
                frame = self.perception.get_frame()
-               cv2.imshow('Camera Frame', frame)
+               
               
                if frame is None:
                    print("No frame captured.")
@@ -174,8 +174,8 @@ class ObjectLocalization:
        else:
            print("Failed to plan motion to home position.")
    def go_to_object(self):
+       
        pos, rot = self.getObjectPosition()
-      
        R_me = np.eye(3)
        theta = np.pi/2
        #R_me[0,0] = -1

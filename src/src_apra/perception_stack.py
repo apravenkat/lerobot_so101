@@ -8,33 +8,78 @@ import mujoco.viewer
 import time
 from motion_planner import MotionPlanner
 import threading
+import zmq
+import pickle
+import struct
 
 class PerceptionStack:
-    def __init__(self):
-    
-        self.cap = cv2.VideoCapture("/dev/video2")
+    def __init__(self, device="/dev/video2", fps=30):
+        self.cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
+
+        # Force MJPEG (what USB cams actually support)
+        self.cap.set(cv2.CAP_PROP_FOURCC,
+                     cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+
+        # Safe USB FPS
+        self.cap.set(cv2.CAP_PROP_FPS, fps)
+
+        # Drop frames aggressively
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        # Reduce MJPEG decode issues
+        self.cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+
         self.latest_frame = None
         self.frame_lock = threading.Lock()
-        self.running = True
-        self.thread = threading.Thread(target=self._update_frame, daemon=True)
-        self.thread.start()
-    
-    def _update_frame(self):
-        while self.running:
-            ret, frame = self.cap.read()
-            if ret:
-                with self.frame_lock:
-                    self.latest_frame = frame
-            cv2.imshow('Camera Frame', frame)
-            cv2.waitKey(1)
-            time.sleep(0.0005)  # Slight delay to prevent high CPU usage
 
-    def get_frame(self, flush=2):
+        self.running = True
+        self.fps = fps
+
+        self.thread = threading.Thread(
+            target=self._update_frame,
+            daemon=True
+        )
+        self.thread.start()
+
+    def _update_frame(self):
+        target_interval = 1.0 / self.fps
+
+        while self.running:
+            start = time.time()
+
+            # SAFE MJPEG PATH
+            if not self.cap.grab():
+                continue
+
+            try:
+                ret, frame = self.cap.retrieve()
+            except cv2.error:
+                continue
+
+            if not ret or frame is None:
+                continue
+
+            with self.frame_lock:
+                self.latest_frame = frame
+
+            # Throttle to avoid USB saturation
+            elapsed = time.time() - start
+            if elapsed < target_interval:
+                time.sleep(target_interval - elapsed)
+
+    def get_frame(self):
         with self.frame_lock:
             if self.latest_frame is None:
                 return None
             return self.latest_frame.copy()
-            
+
+    def stop(self):
+        self.running = False
+        self.thread.join()
+        self.cap.release()
+
+    
+
     def interinsinc_calibration(self):
         ChessBoardSize = (8, 5)
         SquareSize = 25
@@ -118,20 +163,16 @@ class PerceptionStack:
                         print(tvec.ravel()) 
             cv2.imshow('Camera Frame', frame)
 if __name__ == "__main__":
-    perception = PerceptionStack()
-    #perception.get_pictures_for_calibration(num_images=15)
-    #perception.interinsinc_calibration()
-    '''data  = np.load('camera_calibration_data.npz')
-    camera_matrix = data['camera_matrix']
-    dist_coeffs = data['dist_coeffs']
-    r_vecs = data['rvecs']
-    t_vecs = data['tvecs']
-    print(dist_coeffs)'''
-    #perception.get_image_coordinates_from_camera(camera_matrix, dist_coeffs, r_vecs, t_vecs)
-    frame = perception.get_frame()
-    
-    if frame != None:
-        print("Hello")
-        cv2.imshow("Captured", frame)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
+    perception = PerceptionStack(fps=30)
+
+    while True:
+        frame = perception.get_frame()
+        if frame is not None:
+            cv2.imshow("Camera Frame", frame)
+
+        if cv2.waitKey(1) & 0xFF == 27:
+            break
+
+    perception.stop()
+    cv2.destroyAllWindows()
+
