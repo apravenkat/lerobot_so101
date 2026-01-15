@@ -32,7 +32,6 @@ class ObjectLocalization:
 
        corners, ids, _ = detector.detectMarkers(frame)
        if ids is None or len(ids) == 0:
-           print("No ArUco markers detected.")
            return None
 
 
@@ -85,8 +84,8 @@ class ObjectLocalization:
                #print(f"Object Position in Base Frame: x={pos[0]:.3f}, y={pos[1]:.3f}, z={pos[2]:.3f}")
                return pos, rot
           
-           else:
-               print("Object not localized.")
+          
+            
       
 
 

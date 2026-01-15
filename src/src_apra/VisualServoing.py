@@ -29,6 +29,7 @@ class VisualSeroving:
         site_id = mujoco.mj_name2id(self.ol.planner.model, mujoco.mjtObj.mjOBJ_SITE, "gripperframe")
         nq = len(self.ol.planner.joint_names)
         nv = self.ol.planner.model.nv
+        print("NQ:", nq, "NV:", nv)
         total_error = 0
         integral_gain = 0.0001
         p_gain = 2.5
@@ -38,6 +39,7 @@ class VisualSeroving:
         d_gain = 0.001
         control_type = 2
         prev_error = 0
+        self.ol.sync_robot_and_simulation() #sync mujoco robot positions with real robot
         try:
             while True:
                 frame = self.ol.perception.get_frame()
@@ -48,11 +50,9 @@ class VisualSeroving:
                     if pos is not None:
                         current_end_effector_pos, current_end_effector_rot = self.ol.planner.getEndEffectorPosition()
                         error = pos - current_end_effector_pos
-                        print("Error", error)
                         J_pos = np.zeros((3, nv))
                         J_rot = np.zeros((3, nv))
                         mujoco.mj_jacSite(self.ol.planner.model, self.ol.planner.data, J_pos, J_rot, site_id)
-                        J_pos = J_pos[:, :nq]
                         q_dot = self.ol.planner.data.qvel[:nq]
                         if control_type==1:
                             q_dot = self.ol.planner.data.qvel[:nq]
@@ -64,27 +64,20 @@ class VisualSeroving:
                             d_theta = p_gain * (angle_error) + integral_gain * total_error + d_gain * (angle_error-prev_error)
 
                         elif control_type==2:
-                            J = J_pos  # 3 x nq
-                            JT = J.T
-
-                            # Damped least squares: numerically stable
-                            lambda_sq = lambda_**2 * np.eye(3)  # damping term
-                            inv_term = np.linalg.inv(J @ JT + lambda_sq)  # 3x3
-                            d_theta = JT @ inv_term @ error  # nq x 1
-
-                            # Apply gain
-                            d_theta *= gain  # e.g., gain = 0.5 ~ 1.0 depending on robo
-
-                            # Clip max step
-                            max_step = np.radians(0.5)
+                            J_pos_T = J_pos.T    
+                            lambda_sq = (lambda_) * np.eye(3)
+                            JJt = J_pos @ J_pos_T + lambda_sq
+                            d_theta =  J_pos_T @ np.linalg.solve(JJt, error) 
+                            max_step = np.radians(2)
                             d_theta = np.clip(d_theta, -max_step, max_step)
+                            print("d_theta:", d_theta)
                         current_joints = self.ol.planner.getRobotPose()
-                        new_joints = current_joints + (0*np.degrees(d_theta))
-                        self.ol.planner.smooth_joint_positions(new_joints)
+                        new_joints = current_joints + (np.degrees(d_theta))
+                        #self.ol.planner.smooth_joint_positions(new_joints)
                         self.ol.planner.sendSimPoseToRobot(new_joints)
-                        #prev_error = angle_error
-                        self.ol.sync_robot_and_simulation() #sync mujoco robot positions with real robot
+                        self.ol.planner.data.qpos[:nq] = np.radians(new_joints)
                         mujoco.mj_forward(self.ol.planner.model, self.ol.planner.data)
+                        #prev_error = angle_error
                         time.sleep(0.01)
         except KeyboardInterrupt:
             print("Visual servoing stopped by user.")
